@@ -1,0 +1,17 @@
+resolver: lts-13.14
+
+compiler-check: newer-minor
+
+# Local packages, usually specified by relative directory name
+packages:
+- .
+
+# Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
+extra-deps: [ glib-0.13.7.0
+            , gtk3-0.15.1
+            #, gio-0.13.5.0
+            , cairo-0.13.6.0
+            , gio-0.13.6.0
+            , gtk2hs-buildtools-0.13.5.0
+            , pango-0.13.6.0
+            ]
