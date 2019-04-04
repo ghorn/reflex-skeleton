@@ -19,8 +19,11 @@ library
   default-language:  Haskell2010
   exposed-modules:   Skeleton
   build-depends:     base >= 4.6.0.0
+                     , dependent-sum
                      , glib
                      , gtk3 >= 0.14.2
+                     , reflex
+                     , transformers
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall
