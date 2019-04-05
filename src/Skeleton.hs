@@ -32,6 +32,10 @@ import System.Glib.Signals ( on )
 -- General Reflex primitives
 import Reflex.Class
 
+-- Functions for working with `Dynamic`s
+-- Only needed for the commented-out code below
+-- import Reflex.Dynamic ( attachPromptlyDynWith )
+
 -- The widget-side interface for calling performEvent
 import Reflex.PerformEvent.Class
 
@@ -187,6 +191,8 @@ mainWindow inputEvent outputAction = do
       -- choose the *post*-change value, but it's not possible to avoid
       -- expressing a preference.
       performEvent_ $ liftIO . outputAction <$> current state <@ commit
+      -- This version will pick up the *post*-change value:
+      -- performEvent_ $ liftIO . outputAction <$> attachPromptlyDynWith const state commit
 
       -- current status label
       statusLabel <- makeStatusLabel state
