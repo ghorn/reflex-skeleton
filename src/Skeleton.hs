@@ -39,6 +39,9 @@ import Reflex.PerformEvent.Class
 -- `performEvent`
 import Reflex.PerformEvent.Base
 
+-- Functions for dealing with wallclock time
+import Reflex.Time ( throttle )
+
 -- The widget-side interface for creating triggerable events
 import Reflex.TriggerEvent.Class
 
@@ -121,13 +124,16 @@ makeTextEntry = do
   -- Note: this pattern of using `newTriggerEvent` and then `on` to bind the
   -- trigger will be extremely common, so we'll definitely want it to be
   -- packaged up nicely for re-use
-  (startComputation, triggerStartComputation) <- newTriggerEvent
+  (requestStartComputation, triggerStartComputation) <- newTriggerEvent
   -- text update event
   void $ liftGtk $ on entry Gtk.entryActivate $ do
     putStrLn "entryActivate"
     -- get text
     txt <- Gtk.get entry Gtk.entryText :: IO String
     triggerStartComputation txt
+
+  -- Only run the computation at most once per second
+  startComputation <- throttle (1 {- second -}) requestStartComputation
 
   computationFinished <- performEventAsync $ ffor startComputation $ \txt done -> do
     -- run "slow" work in thread
