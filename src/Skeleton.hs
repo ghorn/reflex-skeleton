@@ -20,6 +20,7 @@ module Skeleton
 import Control.Concurrent.Chan ( Chan, readChan, newChan )
 import Control.Concurrent ( forkIO, threadDelay, yield )
 import Control.Monad ( forever, void, forM, forM_ )
+import Control.Monad.Fix ( MonadFix )
 import Control.Monad.IO.Class ( liftIO )
 import Data.Dependent.Sum ( DSum (..) )
 import Data.Functor.Identity ( Identity (..) )
@@ -31,6 +32,8 @@ import System.Glib.Signals ( on )
 
 -- General Reflex primitives
 import Reflex.Class
+
+import Reflex.Dynamic ( count )
 
 -- The widget-side interface for calling performEvent
 import Reflex.PerformEvent.Class
@@ -52,8 +55,13 @@ import Reflex.Spider ( runSpiderHost, SpiderTimeline, SpiderHost, Spider )
 -- it's not necessary to import any internal modules.
 import Reflex.Spider.Internal ( HasSpiderTimeline, SpiderHostFrame, Global )
 
-newtype GuiInputEvent = GuiInputEvent Int deriving Show
-data GuiState = GuiState (Maybe GuiInputEvent) (Maybe String) deriving Show
+data GuiInputEvent
+  = GuiInputEvent_Clear
+  | GuiInputEvent_Squawk
+  | GuiInputEvent_Other Int
+  deriving Show
+
+data GuiState = GuiState (Maybe String) deriving Show
 
 -- | Monads that support building GTK widgets
 class Monad m => MonadGtk m where
@@ -67,6 +75,10 @@ makeStatusLabel
        -- `m` is capable of reading temporal data in the timeline `t`; this
        -- means that an action in `m` exists at a specific moment in time
      , MonadSample t m
+       -- `m` is capable of creating anonymous state cells
+     , MonadHold t m
+       -- `m` is capable of creating recursive monadic actions with `mfix`
+     , MonadFix m
        -- `m` can manipulate GTK objects
      , MonadGtk m
        -- `m` can request that actions of type `Performable m` be performed
@@ -77,12 +89,18 @@ makeStatusLabel
      , PerformEvent t m
        -- Actions requested using `PerformEvent m` can manipulate GTK objects
      , MonadGtk (Performable m)
-     ) => Dynamic t GuiState -> m Gtk.Label
-makeStatusLabel state = do
+     ) => Event t GuiInputEvent -> Dynamic t GuiState -> m Gtk.Label
+makeStatusLabel inputEvent state = do
   statusLabel <- liftGtk $ Gtk.labelNew (Nothing :: Maybe String)
-  let statusMessage = ffor state $ \currentState ->
-        let msg = "The current state is: " <> show currentState
-        in "Welcome to the skeleton!\n" ++ msg
+
+  eventCount :: Dynamic t Int <- count inputEvent
+
+  let mkStatusMessage currentEventCount currentState = unlines
+        [ "Welcome to the skeleton!"
+        , "The current state is: " <> show currentState
+        , "We have received a total of " <> show currentEventCount <> " input events"
+        ]
+      statusMessage = mkStatusMessage <$> eventCount <*> state
 
   -- Set the initial label
   initialStatusMessage <- sample $ current statusMessage --NOTE: This style is actually discouraged, because it has a tendency to cause cycles in large programs; I'll get into the reasons and explain how we've mitigated it (really effectively) in reflex-dom
@@ -105,8 +123,8 @@ makeTextEntry
        -- everything your widgets typically need
      , _
      )
-  => m (Gtk.Entry, Event t (Maybe String))
-makeTextEntry = do
+  => Event t GuiInputEvent -> m (Gtk.Entry, Event t (Maybe String))
+makeTextEntry inputEvent = do
   -- text entry
   entry <- liftGtk Gtk.entryNew
   liftGtk $ Gtk.set entry
@@ -138,6 +156,11 @@ makeTextEntry = do
 
       done txt
 
+  performEvent_ $ fforMaybe inputEvent $ \e -> case e of
+    GuiInputEvent_Clear -> Just $ do
+      liftGtk $ Gtk.set entry [ Gtk.entryText Gtk.:= "" ]
+    _ -> Nothing
+
   let stateUpdate = leftmost
         [ Nothing <$ startComputation
         , Just <$> computationFinished
@@ -163,16 +186,8 @@ mainWindow :: _ => Event t GuiInputEvent -> (GuiState -> IO ()) -> m Gtk.Window
 mainWindow inputEvent outputAction = do
   rec stateString <- holdDyn Nothing setStateString
 
-      -- Does this still need to be stateful at all?  I don't think we actually use
-      -- it statefully.  Note that we've extracted the `Just` to here, so now it's
-      -- obvious from examining this one line of code that `stateEvent` will
-      -- transition from `Nothing` to `Just` and then never return to `Nothing`.  We
-      -- could even create a newtype of `Dynamic` that enforces that law if we
-      -- wanted.
-      stateEvent <- holdDyn Nothing $ Just <$> inputEvent
-
       -- Equivalent to the old `stateRef`
-      let state = GuiState <$> stateEvent <*> stateString
+      let state = GuiState <$> stateString
 
       -- commit button
       (commitButton, commit) <- makeCommitButton
@@ -189,10 +204,15 @@ mainWindow inputEvent outputAction = do
       performEvent_ $ liftIO . outputAction <$> current state <@ commit
 
       -- current status label
-      statusLabel <- makeStatusLabel state
+      statusLabel <- makeStatusLabel inputEvent state
 
       -- text entry label
-      (textEntry, setStateString) <- makeTextEntry
+      (textEntry, setStateString) <- makeTextEntry inputEvent
+
+      performEvent_ $ fforMaybe inputEvent $ \e -> case e of
+        GuiInputEvent_Squawk -> Just $ do
+          liftIO $ putStrLn "Squawk!"
+        _ -> Nothing
 
   -- vbox to hold the widgets
   liftGtk $ do

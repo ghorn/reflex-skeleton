@@ -13,7 +13,10 @@ inputChanDummyWorker chan =
   let go :: Int -> IO ()
       go k = do
         CC.threadDelay 500000
-        writeChan chan (GuiInputEvent k)
+        writeChan chan $ case k `mod` 5 of
+          0 -> GuiInputEvent_Clear
+          2 -> GuiInputEvent_Squawk
+          _ -> GuiInputEvent_Other k
         go (k + 1)
   in go 0
 
